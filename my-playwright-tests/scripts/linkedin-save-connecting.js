@@ -6,9 +6,9 @@ const EMAIL = process.env.LINKEDIN_EMAIL;
 const PASSWORD = process.env.LINKEDIN_PASSWORD;
 
 const SEARCH_QUERY = process.argv[2] || 'cto';
-const MAX_RESULTS = 130;
+const MAX_RESULTS = 150;
 
-const OUTPUT_FILE = 'linkedin-global-results.csv';
+const OUTPUT_FILE = 'send-connect.csv';
 const STORAGE_STATE_PATH = path.resolve(process.env.LINKEDIN_STATE_PATH || 'linkedin-state.json');
 
 const MAX_EMPTY_PAGES = 5;

@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 
 const EMAIL = process.env.LINKEDIN_EMAIL;
 const PASSWORD = process.env.LINKEDIN_PASSWORD;
-const SEARCH_QUERY = 'cto';
+const SEARCH_QUERY = process.env.LINKEDIN_SEARCH_QUERY || 'cto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_RESULTS_DIR = path.resolve(__dirname, '..');
@@ -24,6 +24,7 @@ const CONNECT_WITH_EMAIL_FILE = process.env.LINKEDIN_CONNECT_WITH_EMAIL_FILE
   : path.join(RESULTS_DIR, 'linkedin-connect-with-email.csv');
 
 const STORAGE_STATE_PATH = path.resolve(process.env.LINKEDIN_STATE_PATH || 'linkedin-state.json');
+const MESSAGE = "Hi! I'm exploring my next remote contract role. I'm a Lead Full-Stack Engineer (Python + TypeScript) with 15+ years of experience at Shutterstock, Adidas, Pearson, and HP. I'd love to see if there's an opportunity on your team.";
 
 async function hasValidSession(page) {
   await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded' });
@@ -64,10 +65,8 @@ async function searchPeople(page, query) {
   console.log('✅ Search page loaded');
 }
 
-// 🔴 Helper to close the invite dialog / overlay if it’s still open
 async function closeInviteDialogIfOpen(page) {
   try {
-    // Try common close/dismiss buttons first
     const closeButton = page.locator(
       'button[aria-label="Dismiss"], button[aria-label="Cancel"], button[aria-label="Close"]',
     );
@@ -79,7 +78,6 @@ async function closeInviteDialogIfOpen(page) {
       return;
     }
 
-    // Fallback: ESC to close modal
     await page.keyboard.press('Escape').catch(() => {});
     await page.waitForTimeout(500);
   } catch {
@@ -129,20 +127,17 @@ async function scrapeCurrentPage(
 
       console.log('relationship-building-button text:', relationshipButtonText || 'Not found');
 
-      // 🔹 New: separate "pending" vs "following"
       const lowerText = (relationshipButtonText || '').toLowerCase();
       const isPending = lowerText.includes('pending');
       const isFollowing = lowerText.includes('follow');
 
-      // 🔸 Do NOT save "Following" profiles in any file
       if (isFollowing) {
         console.log('⏭️  Skipping follow-only profile (will not be saved anywhere)');
-        seenProfiles.add(profileUrl); // mark as seen so we don't reprocess
+        seenProfiles.add(profileUrl);
         processedCount++;
-        continue; // completely skip invite + saving
+        continue;
       }
 
-      // For now, "Pending" means we skip sending invite but still can save to results
       const shouldSkipConnection = isPending;
 
       if (shouldSkipConnection) {
@@ -181,9 +176,7 @@ async function scrapeCurrentPage(
 
             const messageBox = page.locator('#custom-message');
             await messageBox.waitFor({ state: 'visible', timeout: 5000 });
-            await messageBox.fill(
-              "Hi! I'm exploring my next remote contract role. I'm a Lead Full-Stack Engineer (Python + TypeScript) with 15+ years of experience at Shutterstock, Adidas, Pearson, and HP. I'd love to see if there's an opportunity on your team.",
-            );
+            await messageBox.fill(MESSAGE);
             console.log('Custom message filled');
             messageFilled = true;
 
@@ -206,18 +199,15 @@ async function scrapeCurrentPage(
               console.log(`❗ Added to failed-send list: ${cleanName} (${profileUrl})`);
             }
           } finally {
-            // Always try to close the modal so it doesn't block pagination
             await closeInviteDialogIfOpen(page);
           }
         }
       }
 
-      // If send failed after message: ONLY in failedProfiles (not in normal results)
       if (!isFailedSendForThisProfile) {
         pageResults.push({ name: cleanName, profileUrl });
       }
 
-      // In all cases (pending / following / success / fail) mark as seen
       seenProfiles.add(profileUrl);
       processedCount++;
     } catch (error) {
@@ -268,7 +258,6 @@ async function scrapeResults(page, maxResults, seenProfiles = new Set(), failedP
         : '⏭️  Going to next page...',
     );
 
-    // Extra safety: close any leftover dialog before clicking "Next"
     await closeInviteDialogIfOpen(page);
 
     await nextButton.click();
@@ -407,7 +396,6 @@ function saveFailedContacts(results, filename) {
     const results = await scrapeResults(page, MAX_RESULTS, existingProfiles, failedSendProfiles);
 
     if (results.length > 0) {
-      // ✅ Only successful / normal results
       saveToCSV(results, OUTPUT_FILE);
       if (RUN_OUTPUT_FILE !== OUTPUT_FILE) {
         saveRunSnapshot(results, RUN_OUTPUT_FILE);
@@ -417,7 +405,6 @@ function saveFailedContacts(results, filename) {
     }
 
     if (failedSendProfiles.length > 0) {
-      // ✅ Contacts where message was filled but send failed → ONLY here
       saveFailedContacts(failedSendProfiles, CONNECT_WITH_EMAIL_FILE);
     }
   } catch (error) {
